@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
+	"os/signal"
 	"strings"
 	"time"
 
@@ -19,25 +19,9 @@ import (
 var (
 	countFlag       = flag.Int("c", 10, "count")
 	targetFlag      = flag.String("t", "local", "target")
-	pipelineJobFlag = flag.String("pj", "", "pipeline/job regex")
-)
+	pipelineJobFlag = flag.String("p", "", "pipeline/job regex")
 
-func main() {
-	flag.Parse()
-	for range time.Tick(2 * time.Second) {
-		if err := run(*targetFlag, *pipelineJobFlag, *countFlag); err != nil {
-			panic(err)
-		}
-	}
-}
-
-func run(target, pattern string, count int) error {
-	output, err := exec.Command("fly", "-t", target, "builds", "-c", strconv.Itoa(count)).Output()
-	if err != nil {
-		return err
-	}
-
-	table := ui.Table{
+	table = ui.Table{
 		Headers: ui.TableRow{
 			{Contents: "id", Color: color.New(color.Bold)},
 			{Contents: "pipeline/job", Color: color.New(color.Bold)},
@@ -48,15 +32,49 @@ func run(target, pattern string, count int) error {
 			{Contents: "duration", Color: color.New(color.Bold)},
 		},
 	}
+)
 
+func main() {
+	flag.Parse()
+	table.Data = make([]ui.TableRow, *countFlag)
+
+	disableInputBuffering()
+	disableStdinDisplay()
+
+	kill := make(chan struct{})
+	go exitHandler(kill)
+
+	for {
+		select {
+		case <-time.After(1 * time.Second):
+			if err := run(*pipelineJobFlag, *countFlag); err != nil {
+				panic(err)
+			}
+		case <-kill:
+			terminate()
+		}
+	}
+}
+
+func run(pattern string, count int) error {
+	output, err := exec.Command("fly", "-t", *targetFlag, "builds").Output()
+	if err != nil {
+		return err
+	}
+
+	var i int
 	scanner := bufio.NewScanner(bytes.NewReader(output))
-	for scanner.Scan() {
+	for scanner.Scan() && i < count {
 		cols := strings.Fields(scanner.Text())
 		if len(cols) != len(table.Headers) {
 			return errors.New("unable to parse line: " + scanner.Text())
 		}
 
-		cells := []ui.TableCell{
+		if pattern != "" { // TODO: implement pattern matching
+			return errors.New("-pj (pipeline/job) is currently not implemented")
+		}
+
+		table.Data[i] = []ui.TableCell{
 			ui.TableCell{Contents: cols[0]},
 			ui.TableCell{Contents: cols[1]},
 			ui.TableCell{Contents: cols[2]},
@@ -65,13 +83,52 @@ func run(target, pattern string, count int) error {
 			ui.TableCell{Contents: cols[5]},
 			ui.TableCell{Contents: cols[6]},
 		}
-		table.Data = append(table.Data, cells)
+		i++
 	}
 
 	table.Render(os.Stdout)
-	fmt.Fprint(os.Stdout, "\r\033[s\033["+strconv.Itoa(count+1)+"A")
-
+	fmt.Fprintf(os.Stdout, "\r\033[?25l\033[s\033[%dA", i+1) // move ANSI cursor to upper-left corner
 	return nil
+}
+
+func disableInputBuffering() {
+	if err := exec.Command("stty", "-f", "/dev/tty", "cbreak", "min", "1").Run(); err != nil {
+		if err := exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run(); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func disableStdinDisplay() {
+	if err := exec.Command("stty", "-f", "/dev/tty", "-echo").Run(); err != nil {
+		if err := exec.Command("stty", "-F", "/dev/tty", "-echo").Run(); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func exitHandler(kill chan struct{}) {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt)
+	go func() {
+		for range signals {
+			kill <- struct{}{} // TODO: properly handle each signal type
+		}
+	}()
+
+	b := make([]byte, 1)
+	for {
+		os.Stdin.Read(b)
+		if b[0] == 'q' {
+			kill <- struct{}{}
+		}
+	}
+}
+
+func terminate() {
+	table.Render(os.Stdout)            // dump latest table to stdout
+	fmt.Fprint(os.Stdout, "\033[?25h") // re-enable ANSI cursor
+	os.Exit(0)
 }
 
 func colorize(status string) *color.Color {
