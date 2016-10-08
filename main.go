@@ -71,7 +71,7 @@ func run(pattern string, count int) error {
 		}
 
 		if pattern != "" { // TODO: implement pattern matching
-			return errors.New("-pj (pipeline/job) is currently not implemented")
+			return errors.New("-p (pipeline/job) is currently not implemented")
 		}
 
 		table.Data[i] = []ui.TableCell{
