@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/concourse/fly/rc"
 	"github.com/concourse/fly/ui"
 	"github.com/fatih/color"
 )
@@ -36,6 +37,18 @@ var (
 
 func main() {
 	flag.Parse()
+
+	target, err := rc.LoadTarget(rc.TargetName(*targetFlag))
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	if err := target.Validate(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
 	table.Data = make([]ui.TableRow, *countFlag)
 
 	disableInputBuffering()
