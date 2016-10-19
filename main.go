@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"regexp"
 	"strings"
 	"time"
 
@@ -75,6 +76,11 @@ func run(pattern string, count int) error {
 		return err
 	}
 
+	var regex *regexp.Regexp
+	if pattern != "" {
+		regex = regexp.MustCompile(pattern)
+	}
+
 	var i int
 	scanner := bufio.NewScanner(bytes.NewReader(output))
 	for scanner.Scan() && i < count {
@@ -83,8 +89,10 @@ func run(pattern string, count int) error {
 			return errors.New("unable to parse line: " + scanner.Text())
 		}
 
-		if pattern != "" { // TODO: implement pattern matching
-			return errors.New("-p (pipeline/job) is currently not implemented")
+		if regex != nil {
+			if !regex.MatchString(cols[1]) {
+				continue
+			}
 		}
 
 		table.Data[i] = []ui.TableCell{
@@ -106,17 +114,13 @@ func run(pattern string, count int) error {
 
 func disableInputBuffering() {
 	if err := exec.Command("stty", "-f", "/dev/tty", "cbreak", "min", "1").Run(); err != nil {
-		if err := exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run(); err != nil {
-			panic(err)
-		}
+		panic(err)
 	}
 }
 
 func disableStdinDisplay() {
 	if err := exec.Command("stty", "-f", "/dev/tty", "-echo").Run(); err != nil {
-		if err := exec.Command("stty", "-F", "/dev/tty", "-echo").Run(); err != nil {
-			panic(err)
-		}
+		panic(err)
 	}
 }
 
