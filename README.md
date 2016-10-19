@@ -21,6 +21,6 @@ Usage of ./airspace:
   -t string
     	target (default "local")
 
-$ airspace -t dev -c 10
+$ airspace -t dev -c 10 -p 'feature-.*'
 ...
 ```
