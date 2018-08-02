@@ -39,7 +39,7 @@ var (
 func main() {
 	flag.Parse()
 
-	target, err := rc.LoadTarget(rc.TargetName(*targetFlag))
+	target, err := rc.LoadTarget(rc.TargetName(*targetFlag), false)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -107,7 +107,7 @@ func run(pattern string, count int) error {
 		i++
 	}
 
-	table.Render(os.Stdout)
+	table.Render(os.Stdout, false)
 	fmt.Fprintf(os.Stdout, "\r\033[?25l\033[s\033[%dA", i+1) // move ANSI cursor to upper-left corner
 	return nil
 }
@@ -143,7 +143,7 @@ func exitHandler(kill chan struct{}) {
 }
 
 func terminate() {
-	table.Render(os.Stdout)            // dump latest table to stdout
+	table.Render(os.Stdout, false)     // dump latest table to stdout
 	fmt.Fprint(os.Stdout, "\033[?25h") // re-enable ANSI cursor
 	os.Exit(0)
 }
